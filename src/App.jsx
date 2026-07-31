@@ -1,5 +1,3 @@
-// AutoLedger — Firebase Edition
-// Swap the CDN imports for npm imports for Vercel build
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import {
@@ -10,8 +8,6 @@ import {
   getStorage, ref as storageRef, uploadBytes,
   getDownloadURL
 } from "firebase/storage";
-  getDownloadURL, deleteObject
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ── Firebase ─────────────────────────────────────────────────────────────────
 const firebaseConfig = {
