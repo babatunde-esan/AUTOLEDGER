@@ -4,10 +4,7 @@ import {
   getFirestore, collection, doc, onSnapshot,
   addDoc, updateDoc, deleteDoc, serverTimestamp
 } from "firebase/firestore";
-import {
-  getStorage, ref as storageRef, uploadBytes,
-  getDownloadURL
-} from "firebase/storage";
+// Firebase Storage not used — receipts stored as base64 in Firestore (free tier)
 
 // ── Firebase ─────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -20,7 +17,7 @@ const firebaseConfig = {
 };
 const fbApp  = initializeApp(firebaseConfig);
 const db      = getFirestore(fbApp);
-const storage = getStorage(fbApp);
+// (no Firebase Storage — using Firestore base64 instead)
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -229,31 +226,20 @@ export default function AutoLedger() {
     { totalInvested: 0, totalProfit: 0, inventoryValue: 0, sold: 0, available: 0 }
   );
 
-  // ── Upload receipt file to Firebase Storage ─────────────────────────────
-  async function uploadReceiptFile(file, vehicleId) {
-    const ext = file.name?.split(".").pop() || (file.type === "application/pdf" ? "pdf" : "jpg");
-    const path = `receipts/${vehicleId}/${uid()}.${ext}`;
-    const sRef = storageRef(storage, path);
-    await uploadBytes(sRef, file);
-    const downloadURL = await getDownloadURL(sRef);
-    return { name: file.name || `receipt.${ext}`, type: file.type || "image/jpeg", storagePath: path, downloadURL };
-  }
-
-  // ── AI Receipt Scan ─────────────────────────────────────────────────────
+  // ── AI Receipt Scan — stores base64 in Firestore (no Storage needed) ───
   const handleScan = async (file, vehicleId) => {
     setScanLoading(true); setScanError(null); setScanResult(null);
     try {
-      // Upload to Storage first so we always have a permanent copy
-      const receiptMeta = await uploadReceiptFile(file, vehicleId || "pending");
-      setPendingReceipts((p) => [...p, receiptMeta]);
-
-      // Read as base64 for AI
-      const base64 = await new Promise((res, rej) => {
+      // Read file as base64 data URL — this is what gets stored in Firestore
+      const dataUrl = await new Promise((res, rej) => {
         const r = new FileReader();
-        r.onload = () => res(r.result.split(",")[1]);
+        r.onload = () => res(r.result);
         r.onerror = rej;
         r.readAsDataURL(file);
       });
+      const base64 = dataUrl.split(",")[1];
+      const receiptMeta = { name: file.name || "receipt", type: file.type || "image/jpeg", dataUrl };
+      setPendingReceipts((p) => [...p, receiptMeta]);
 
       const isPdf = file.type === "application/pdf";
       const contentBlock = isPdf
@@ -623,12 +609,12 @@ function VehicleDetail({ vehicle: v, onBack, onAddExpense, onSell, onDelete, onD
                     <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                       {e.receipts.map((r, i) => (
                         <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                          <div onClick={() => onViewReceipt(r.downloadURL || r.dataUrl, r.name)} style={{ width: 52, height: 52, borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <div onClick={() => onViewReceipt(r.dataUrl, r.name)} style={{ width: 52, height: 52, borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                             {r.type === "application/pdf"
                               ? <div style={{ textAlign: "center" }}><Ico name="file" size={16} color={C.amber} /><div style={{ fontSize: 9, color: C.amber, fontWeight: 700 }}>PDF</div></div>
-                              : <img src={r.downloadURL || r.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
+                              : <img src={r.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
                           </div>
-                          <button onClick={() => downloadUrl(r.downloadURL || r.dataUrl, r.name)} style={{ background: C.blueLight, border: "none", borderRadius: 6, padding: "2px 6px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
+                          <button onClick={() => downloadUrl(r.dataUrl, r.name)} style={{ background: C.blueLight, border: "none", borderRadius: 6, padding: "2px 6px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
                             <Ico name="download" size={10} color={C.blue} /><span style={{ fontSize: 9, color: C.blue, fontWeight: 700 }}>Save</span>
                           </button>
                         </div>
@@ -667,16 +653,16 @@ function VehicleDetail({ vehicle: v, onBack, onAddExpense, onSell, onDelete, onD
               <div style={{ padding: "12px 20px", background: C.blueLight, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Ico name="cloud" size={16} color={C.blue} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: C.blue }}>{receipts.length} document{receipts.length !== 1 ? "s" : ""} stored in Firebase Storage</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.blue }}>{receipts.length} document{receipts.length !== 1 ? "s" : ""} saved in Firestore</span>
                 </div>
-                <button onClick={() => receipts.forEach((r, i) => setTimeout(() => downloadUrl(r.downloadURL || r.dataUrl, r.name || `receipt-${i + 1}`), i * 200))} style={{ ...btnStyle(C.blue), padding: "6px 14px", fontSize: 12 }}>
+                <button onClick={() => receipts.forEach((r, i) => setTimeout(() => downloadUrl(r.dataUrl, r.name || `receipt-${i + 1}`), i * 200))} style={{ ...btnStyle(C.blue), padding: "6px 14px", fontSize: 12 }}>
                   <Ico name="download" size={14} color={C.white} /> Download All
                 </button>
               </div>
               {receipts.map((r, i) => {
                 const isPdf = r.type === "application/pdf" || r.name?.endsWith(".pdf");
                 const filename = r.name || `receipt-${i + 1}`;
-                const src = r.downloadURL || r.dataUrl;
+                const src = r.dataUrl;
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
                     <div onClick={() => onViewReceipt(src, filename)} style={{ width: 60, height: 60, borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -688,7 +674,7 @@ function VehicleDetail({ vehicle: v, onBack, onAddExpense, onSell, onDelete, onD
                       <div style={{ fontWeight: 600, fontSize: 14, color: C.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.expenseItem} — {r.expenseVendor || "Unknown vendor"}</div>
                       <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{r.expenseDate} · {isPdf ? "PDF document" : "Image"}</div>
                       <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
-                      <div style={{ fontSize: 11, color: C.green, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><Ico name="cloud" size={10} color={C.green} /> Stored in Firebase</div>
+                      <div style={{ fontSize: 11, color: C.green, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><Ico name="cloud" size={10} color={C.green} /> Saved in Firestore</div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                       <button onClick={() => onViewReceipt(src, filename)} style={{ ...btnStyle(C.blueLight, C.blue), padding: "7px 12px", fontSize: 13 }}><Ico name="eye" size={15} color={C.blue} /></button>
@@ -837,7 +823,7 @@ function AddExpenseForm({ vehicle, onSave, onCancel, scanResult, setScanResult, 
         {pendingReceipts.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 8, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-              <Ico name="cloud" size={12} color={C.green} /> Uploaded to Firebase ({pendingReceipts.length})
+              <Ico name="cloud" size={12} color={C.green} /> Ready to save ({pendingReceipts.length})
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {pendingReceipts.map((r, i) => (
@@ -845,7 +831,7 @@ function AddExpenseForm({ vehicle, onSave, onCancel, scanResult, setScanResult, 
                   <div style={{ width: 52, height: 52, borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.3)", overflow: "hidden", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {r.type === "application/pdf" || r.name?.endsWith(".pdf")
                       ? <div style={{ textAlign: "center" }}><Ico name="file" size={16} color={C.amber} /><div style={{ fontSize: 9, color: C.amber, fontWeight: 700 }}>PDF</div></div>
-                      : <img src={r.downloadURL} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
+                      : <img src={r.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
                   </div>
                   <button onClick={() => setPendingReceipts((p) => p.filter((_, idx) => idx !== i))} style={{ position: "absolute", top: -6, right: -6, background: C.red, border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
                     <Ico name="trash" size={9} color={C.white} />
