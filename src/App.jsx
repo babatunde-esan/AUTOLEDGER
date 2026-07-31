@@ -747,7 +747,7 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
         : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
