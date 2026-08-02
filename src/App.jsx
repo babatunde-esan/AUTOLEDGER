@@ -143,6 +143,7 @@ const Ico = ({ name, size = 20, color = "currentColor" }) => {
     eye:      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
     x:        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
     menu:     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+    edit:     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
   };
   return icons[name] || null;
 };
@@ -269,6 +270,13 @@ export default function AutoLedger() {
     finally { setSaving(false); }
   }
 
+  async function editVehicle(vehicleId, data) {
+    setSaving(true);
+    try { await updateDoc(doc(db, "vehicles", vehicleId), data); setView("detail"); }
+    catch { alert("Update failed."); }
+    finally { setSaving(false); }
+  }
+
   async function deleteVehicle(vehicleId) {
     if (!window.confirm("Delete this vehicle? This cannot be undone.")) return;
     setSaving(true);
@@ -326,7 +334,7 @@ export default function AutoLedger() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 56 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {(view !== "dashboard" && view !== "list") && (
-              <button onClick={() => view === "addExpense" || view === "sell" || view === "docs" ? navTo("detail") : navTo("list")} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", display: "flex", color: C.white }}>
+              <button onClick={() => view === "addExpense" || view === "sell" || view === "docs" || view === "editVehicle" ? navTo("detail") : navTo("list")} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", display: "flex", color: C.white }}>
                 <Ico name="back" size={20} color={C.white} />
               </button>
             )}
@@ -337,7 +345,7 @@ export default function AutoLedger() {
             <button onClick={() => navTo("dashboard")} style={{ background: view === "dashboard" ? "rgba(255,255,255,0.2)" : "none", border: "none", color: C.white, cursor: "pointer", padding: "6px 10px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
               <Ico name="chart" size={18} color={C.white} />
             </button>
-            <button onClick={() => navTo("list")} style={{ background: ["list","detail","addVehicle","addExpense","sell","docs"].includes(view) ? "rgba(255,255,255,0.2)" : "none", border: "none", color: C.white, cursor: "pointer", padding: "6px 10px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+            <button onClick={() => navTo("list")} style={{ background: ["list","detail","addVehicle","addExpense","sell","docs","editVehicle"].includes(view) ? "rgba(255,255,255,0.2)" : "none", border: "none", color: C.white, cursor: "pointer", padding: "6px 10px", borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
               <Ico name="car" size={18} color={C.white} />
             </button>
             <button onClick={() => navTo("addVehicle")} style={{ background: C.amber, border: "none", color: C.white, cursor: "pointer", padding: "6px 12px", borderRadius: 8, fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
@@ -360,11 +368,15 @@ export default function AutoLedger() {
         {view === "detail" && selected && (
           <VehicleDetail vehicle={selected}
             onAddExpense={() => navTo("addExpense")}
+            onEdit={() => navTo("editVehicle")}
             onSell={() => navTo("sell")}
             onDelete={() => deleteVehicle(selected.id)}
             onDeleteExpense={(eid) => deleteExpense(selected.id, eid)}
             onViewDocs={() => navTo("docs")}
             onViewReceipt={setLightbox} />
+        )}
+        {view === "editVehicle" && selected && (
+          <EditVehicleForm vehicle={selected} onSave={(data) => editVehicle(selected.id, data)} saving={saving} />
         )}
         {view === "addVehicle" && <AddVehicleForm onSave={addVehicle} saving={saving} />}
         {view === "addExpense" && selected && (
@@ -501,7 +513,7 @@ function VehicleList({ vehicles, onSelect, onAdd }) {
 }
 
 // ── Vehicle Detail ────────────────────────────────────────────────────────────
-function VehicleDetail({ vehicle: v, onAddExpense, onSell, onDelete, onDeleteExpense, onViewDocs, onViewReceipt }) {
+function VehicleDetail({ vehicle: v, onAddExpense, onEdit, onSell, onDelete, onDeleteExpense, onViewDocs, onViewReceipt }) {
   const { totalExpenses, totalCost, profit, margin } = calcVehicle(v);
   const sm = STATUS_META[v.status] || STATUS_META["In Repair"];
   const receipts = allReceipts(v);
@@ -535,12 +547,14 @@ function VehicleDetail({ vehicle: v, onAddExpense, onSell, onDelete, onDeleteExp
       </div>
 
       {/* Action buttons */}
-      {v.status !== "Sold" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        {v.status !== "Sold" && <>
           <Btn full color={C.blue} onClick={onAddExpense} size="lg"><Ico name="plus" size={20} color={C.white} />Add Expense</Btn>
           <Btn full color={C.green} onClick={onSell} size="lg"><Ico name="dollar" size={20} color={C.white} />Mark Sold</Btn>
-        </div>
-      )}
+        </>}
+        <Btn full outline color={C.blue} onClick={onEdit} size="sm"><Ico name="edit" size={16} color={C.blue} />Edit Vehicle</Btn>
+        <Btn full outline color={C.red} onClick={onDelete} size="sm"><Ico name="trash" size={16} color={C.red} />Delete</Btn>
+      </div>
 
       {/* Documents vault shortcut */}
       {receipts.length > 0 && (
@@ -619,7 +633,6 @@ function VehicleDetail({ vehicle: v, onAddExpense, onSell, onDelete, onDeleteExp
         </div>
       )}
 
-      <Btn full outline color={C.red} onClick={onDelete} size="sm">Delete Vehicle</Btn>
     </div>
   );
 }
@@ -983,6 +996,76 @@ function SellForm({ vehicle, onSave, saving }) {
           onSave({ salePrice: Number(salePrice), soldDate });
         }}>
           {saving ? "Saving..." : <><Ico name="check" size={20} color={C.white} />Confirm Sale</>}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Vehicle Form ─────────────────────────────────────────────────────────
+function EditVehicleForm({ vehicle: v, onSave, saving }) {
+  const [form, setForm] = useState({
+    year: v.year || "",
+    make: v.make || "",
+    model: v.model || "",
+    trim: v.trim || "",
+    vin: v.vin || "",
+    mileage: v.mileage || "",
+    purchaseDate: v.purchaseDate || today(),
+    purchasePrice: v.purchasePrice || "",
+    estimatedSale: v.estimatedSale || "",
+    status: v.status || "In Repair",
+  });
+  const set = (k, val) => setForm((p) => ({ ...p, [k]: val }));
+  const models = form.make ? Object.keys(VEHICLE_DB[form.make] || {}).sort() : [];
+  const trims = (form.make && form.model) ? (VEHICLE_DB[form.make]?.[form.model] || []) : [];
+
+  return (
+    <div style={{ animation: "slideUp 0.2s ease" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>Edit Vehicle</h1>
+      <p style={{ color: C.textMuted, fontSize: 14, margin: "0 0 16px" }}>{v.year} {v.make} {v.model}</p>
+      <div style={{ ...S.card, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+
+        <Select label="Year" value={form.year} options={YEARS} onChange={(val) => set("year", val)} placeholder="Select year..." />
+        <Select label="Make" value={form.make} options={MAKES} onChange={(val) => { set("make", val); set("model", ""); set("trim", ""); }} placeholder="Select make..." />
+        <Select label="Model" value={form.model} options={models} onChange={(val) => { set("model", val); set("trim", ""); }} placeholder={form.make ? "Select model..." : "Select make first"} />
+        <Select label="Trim" value={form.trim} options={trims} onChange={(val) => set("trim", val)} placeholder={trims.length ? "Select trim..." : "Select model first"} />
+
+        <Field label="VIN" value={form.vin} onChange={(val) => set("vin", val)} placeholder="1HGCM82633A123456" />
+        <Field label="Mileage (km)" value={form.mileage} onChange={(val) => set("mileage", val)} placeholder="142000" type="number" />
+        <Field label="Purchase Date" value={form.purchaseDate} onChange={(val) => set("purchaseDate", val)} type="date" />
+        <Field label="Purchase Price (CAD)" value={String(form.purchasePrice)} onChange={(val) => set("purchasePrice", val)} placeholder="6800" type="number" />
+        <Field label="Estimated Sale Price (CAD)" value={String(form.estimatedSale)} onChange={(val) => set("estimatedSale", val)} placeholder="12500" type="number" />
+
+        <div>
+          <label style={S.label}>Status</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {["In Repair", "Available", "Sold"].map((s) => {
+              const sm = STATUS_META[s];
+              const active = form.status === s;
+              return (
+                <button key={s} onClick={() => set("status", s)} style={{ flex: 1, background: active ? sm.bg : C.slateLight, color: active ? sm.color : C.textMuted, border: `2px solid ${active ? sm.color : C.border}`, padding: "10px 6px", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  {sm.icon} {s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <Btn full color={C.blue} size="lg" disabled={saving} onClick={() => {
+          if (!form.year || !form.make || !form.model || !form.purchasePrice) {
+            alert("Year, Make, Model and Purchase Price are required.");
+            return;
+          }
+          onSave({
+            year: form.year, make: form.make, model: form.model, trim: form.trim,
+            vin: form.vin, mileage: form.mileage, purchaseDate: form.purchaseDate,
+            purchasePrice: Number(form.purchasePrice),
+            estimatedSale: Number(form.estimatedSale) || 0,
+            status: form.status,
+          });
+        }}>
+          {saving ? "Saving..." : <><Ico name="check" size={20} color={C.white} />Save Changes</>}
         </Btn>
       </div>
     </div>
