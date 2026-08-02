@@ -67,6 +67,28 @@ function calcAuctionTotal(salePrice) {
   return { buyerFee, subtotal, hst, totalAuctionCost };
 }
 
+
+// ── LocalStorage for large files (PDFs stay on device, not Firestore) ────────
+const LS_PREFIX = "al_receipt_";
+
+function saveFileLocally(id, dataUrl) {
+  try { localStorage.setItem(LS_PREFIX + id, dataUrl); return true; }
+  catch (e) { console.warn("LocalStorage full, file not cached locally:", e); return false; }
+}
+
+function loadFileLocally(id) {
+  try { return localStorage.getItem(LS_PREFIX + id); }
+  catch { return null; }
+}
+
+// Estimate base64 size in bytes
+function estimateSize(dataUrl) {
+  return Math.round((dataUrl.length * 3) / 4);
+}
+
+// Max size to store in Firestore per receipt (200KB compressed)
+const MAX_FIRESTORE_RECEIPT = 200 * 1024;
+
 // ── Vehicle DB ────────────────────────────────────────────────────────────────
 const VEHICLE_DB = {
   Acura:{ MDX:["Base","Tech","A-Spec","SH-AWD"],RDX:["Base","Tech","A-Spec","Advance"],TLX:["Base","Tech","Type S"],ILX:["Base","Premium","Tech"] },
@@ -473,11 +495,15 @@ export default function AutoLedger() {
       {lightbox && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 2000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setLightbox(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 500 }}>
-            {lightbox.dataUrl?.includes("application/pdf") || lightbox.name?.endsWith(".pdf")
-              ? <div style={{ background: C.white, borderRadius: 16, padding: 40, textAlign: "center" }}><Ico name="file" size={56} color={C.amber} /><p style={{ color: C.textMid, marginTop: 12 }}>{lightbox.name}</p></div>
+            {lightbox.isPdf || lightbox.name?.endsWith(".pdf") || !lightbox.dataUrl
+              ? <div style={{ background: C.white, borderRadius: 16, padding: 40, textAlign: "center" }}>
+                  <Ico name="file" size={56} color={C.amber} />
+                  <p style={{ color: C.textMid, marginTop: 12, fontWeight: 600 }}>{lightbox.name}</p>
+                  {!lightbox.dataUrl && <p style={{ color: C.textMuted, fontSize: 13, marginTop: 8 }}>PDF stored on original device. Open AutoLedger on that device to download.</p>}
+                </div>
               : <img src={lightbox.dataUrl} alt="receipt" style={{ width: "100%", borderRadius: 12, objectFit: "contain", maxHeight: "70vh" }} />}
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <Btn full color={C.green} onClick={() => downloadDataUrl(lightbox.dataUrl, lightbox.name)}><Ico name="download" size={18} color={C.white} />Download</Btn>
+              {lightbox.dataUrl && <Btn full color={C.green} onClick={() => downloadDataUrl(lightbox.dataUrl, lightbox.name)}><Ico name="download" size={18} color={C.white} />Download</Btn>}
               <Btn full outline color={C.white} textColor={C.white} onClick={() => setLightbox(null)}><Ico name="x" size={18} color={C.white} />Close</Btn>
             </div>
           </div>
@@ -887,8 +913,13 @@ function VehicleDetail({ vehicle: v, onAddExpense, onEdit, onSell, onDelete, onD
                   {(e.receipts || []).length > 0 && (
                     <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                       {e.receipts.map((r, i) => (
-                        <div key={i} onClick={() => onViewReceipt({ dataUrl: r.dataUrl, name: r.name })} style={{ width: 52, height: 52, borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {r.type === "application/pdf" || r.name?.endsWith(".pdf")
+                        <div key={i} onClick={() => {
+                            const src = r.isPdf
+                              ? (r.localId ? loadFileLocally(r.localId) : null)
+                              : r.dataUrl;
+                            onViewReceipt({ dataUrl: src, name: r.name, isPdf: r.isPdf, localId: r.localId });
+                          }} style={{ width: 52, height: 52, borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {r.isPdf || r.type === "application/pdf" || r.name?.endsWith(".pdf")
                             ? <div style={{ textAlign: "center" }}><Ico name="file" size={16} color={C.amber} /><div style={{ fontSize: 9, color: C.amber, fontWeight: 700 }}>PDF</div></div>
                             : <img src={r.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
                         </div>
@@ -980,18 +1011,33 @@ function DocumentVault({ vehicle: v, onViewReceipt }) {
               const filename = r.name || `receipt-${i + 1}`;
               return (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: i < receipts.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                  <div onClick={() => onViewReceipt({ dataUrl: r.dataUrl, name: filename })} style={{ width: 56, height: 56, borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div onClick={() => {
+                    const src = r.isPdf ? (r.localId ? loadFileLocally(r.localId) : null) : r.dataUrl;
+                    if (!src && r.isPdf) { alert("PDF was saved on another device. Re-upload to view it here."); return; }
+                    onViewReceipt({ dataUrl: src, name: filename, isPdf: r.isPdf });
+                  }} style={{ width: 56, height: 56, borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.slateLight, overflow: "hidden", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {isPdf ? <div style={{ textAlign: "center" }}><Ico name="file" size={20} color={C.amber} /><div style={{ fontSize: 9, color: C.amber, fontWeight: 700 }}>PDF</div></div>
                       : <img src={r.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="receipt" />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.navy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.expenseItem}</div>
                     <div style={{ fontSize: 12, color: C.textMuted }}>{r.expenseVendor || "—"} · {r.expenseDate}</div>
-                    <div style={{ fontSize: 11, color: C.textMuted }}>{isPdf ? "PDF" : "Image"} · {filename}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>
+                      {isPdf ? "PDF" : "Image"} · {filename}
+                      {r.isPdf && !r.localId && <span style={{ color: C.amber, marginLeft: 6 }}>⚠ Open on original device to download</span>}
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => onViewReceipt({ dataUrl: r.dataUrl, name: filename })} style={{ background: C.blueLight, border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer" }}><Ico name="eye" size={17} color={C.blue} /></button>
-                    <button onClick={() => downloadDataUrl(r.dataUrl, filename)} style={{ background: C.greenLight, border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer" }}><Ico name="download" size={17} color={C.green} /></button>
+                    <button onClick={() => {
+                      const src = r.isPdf ? (r.localId ? loadFileLocally(r.localId) : null) : r.dataUrl;
+                      if (!src && r.isPdf) { alert("PDF saved on another device. Re-upload to access it here."); return; }
+                      onViewReceipt({ dataUrl: src, name: filename, isPdf: r.isPdf });
+                    }} style={{ background: C.blueLight, border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer" }}><Ico name="eye" size={17} color={C.blue} /></button>
+                    <button onClick={() => {
+                      const src = r.isPdf ? (r.localId ? loadFileLocally(r.localId) : null) : r.dataUrl;
+                      if (!src) { alert("File not available on this device."); return; }
+                      downloadDataUrl(src, filename);
+                    }} style={{ background: C.greenLight, border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer" }}><Ico name="download" size={17} color={C.green} /></button>
                   </div>
                 </div>
               );
@@ -1129,11 +1175,43 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
     try {
       const dataUrl  = await fileToDataUrl(file);
       const isPdf    = file.type === "application/pdf";
-      // Compress images to keep Firestore docs under 1MB
-      const stored   = isPdf ? dataUrl : await compressImage(dataUrl, 800, 0.7);
-      const base64   = stored.split(",")[1];
       const mediaType = isPdf ? "application/pdf" : "image/jpeg";
-      setReceipts((prev) => [...prev, { dataUrl: stored, name: file.name || (isPdf ? "receipt.pdf" : "receipt.jpg"), type: isPdf ? "application/pdf" : "image/jpeg" }]);
+      const fileName  = file.name || (isPdf ? "receipt.pdf" : "receipt.jpg");
+
+      // For AI scanning always use the full file
+      const base64ForScan = dataUrl.split(",")[1];
+
+      // For STORAGE: PDFs go to localStorage only (too large for Firestore)
+      // Images get compressed down to <200KB for Firestore
+      let storedDataUrl;
+      let localId = null;
+
+      if (isPdf) {
+        // Save full PDF to localStorage, store only a placeholder in Firestore
+        localId = uid();
+        saveFileLocally(localId, dataUrl);
+        // Firestore gets a tiny marker, not the full PDF
+        storedDataUrl = null;
+      } else {
+        // Compress image aggressively - target under 200KB
+        let compressed = await compressImage(dataUrl, 800, 0.7);
+        if (estimateSize(compressed) > MAX_FIRESTORE_RECEIPT) {
+          compressed = await compressImage(dataUrl, 600, 0.5);
+        }
+        if (estimateSize(compressed) > MAX_FIRESTORE_RECEIPT) {
+          compressed = await compressImage(dataUrl, 400, 0.4);
+        }
+        storedDataUrl = compressed;
+      }
+
+      setReceipts((prev) => [...prev, {
+        dataUrl: isPdf ? dataUrl : storedDataUrl, // show full PDF in UI during this session
+        firestoreDataUrl: storedDataUrl,            // what actually gets saved to Firestore
+        localId,                                    // key to retrieve PDF from localStorage
+        name: fileName,
+        type: mediaType,
+        isPdf,
+      }]);
 
       const contentBlock = isPdf
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
@@ -1183,7 +1261,16 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
   function handleSave() {
     const finalItem = isCustom ? customItem : item;
     if (!finalItem || !amount) { alert("Item and amount are required."); return; }
-    onSave({ category, item: finalItem, amount: Number(amount), vendor, date, note, receipts });
+    // Strip full PDF dataUrls before saving to Firestore - use firestoreDataUrl instead
+    const firestoreReceipts = receipts.map((r) => ({
+      name: r.name,
+      type: r.type,
+      isPdf: r.isPdf || false,
+      localId: r.localId || null,
+      // For images: use compressed version. For PDFs: null (stored in localStorage)
+      dataUrl: r.firestoreDataUrl || (r.isPdf ? null : r.dataUrl) || null,
+    }));
+    onSave({ category, item: finalItem, amount: Number(amount), vendor, date, note, receipts: firestoreReceipts });
   }
 
   return (
