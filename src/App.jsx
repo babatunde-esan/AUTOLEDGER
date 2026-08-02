@@ -696,22 +696,209 @@ function DocumentVault({ vehicle: v, onViewReceipt }) {
 function AddVehicleForm({ onSave, saving }) {
   const [form, setForm] = useState({ year: "", make: "", model: "", trim: "", vin: "", mileage: "", purchaseDate: today(), purchasePrice: "", estimatedSale: "" });
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const [scanDoc, setScanDoc] = useState(null); // { dataUrl, name }
+  const [fieldsScanned, setFieldsScanned] = useState([]);
+  const cameraRef = useRef();
+  const uploadRef = useRef();
+
   const models = form.make ? Object.keys(VEHICLE_DB[form.make] || {}).sort() : [];
   const trims = (form.make && form.model) ? (VEHICLE_DB[form.make]?.[form.model] || []) : [];
+
+  // Find closest matching make in our DB
+  function matchMake(raw) {
+    if (!raw) return "";
+    const upper = raw.toUpperCase();
+    return MAKES.find((m) => upper.includes(m.toUpperCase())) || "";
+  }
+
+  // Find closest matching model for a given make
+  function matchModel(make, raw) {
+    if (!make || !raw) return "";
+    const models = Object.keys(VEHICLE_DB[make] || {});
+    const upper = raw.toUpperCase();
+    return models.find((m) => upper.includes(m.toUpperCase())) || "";
+  }
+
+  // Find closest matching trim
+  function matchTrim(make, model, raw) {
+    if (!make || !model || !raw) return "";
+    const trims = VEHICLE_DB[make]?.[model] || [];
+    const upper = raw.toUpperCase();
+    return trims.find((t) => upper.includes(t.toUpperCase())) || "";
+  }
+
+  async function scanDocument(file) {
+    if (!file) return;
+    setScanning(true); setScanError(""); setFieldsScanned([]);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const base64 = dataUrl.split(",")[1];
+      const isPdf = file.type === "application/pdf";
+      setScanDoc({ dataUrl, name: file.name || (isPdf ? "document.pdf" : "document.jpg") });
+
+      const contentBlock = isPdf
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+        : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } };
+
+      const resp = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: [
+            contentBlock,
+            { type: "text", text: `You are reading a vehicle purchase document (auction bill of sale, receipt, or title) for a Canadian vehicle reseller.
+Extract all available vehicle and purchase details and return ONLY valid JSON, nothing else:
+{
+  "year": "4-digit year string e.g. 2018",
+  "make": "manufacturer name e.g. Honda, Toyota, Ford",
+  "model": "model name e.g. Civic, RAV4, F-150",
+  "trim": "trim level e.g. LX, EX-L, XLT or empty string",
+  "vin": "full 17-character VIN or empty string",
+  "mileage": "odometer reading as number string, digits only, or empty string",
+  "purchaseDate": "YYYY-MM-DD format or empty string",
+  "purchasePrice": "sale/hammer price as number (no currency symbol), not including fees",
+  "totalPaid": "total amount paid including all fees and taxes as number, or 0",
+  "vendor": "seller or auction company name e.g. Copart, IAA, dealer name",
+  "notes": "any other relevant details like lot number, condition, or key fees"
+}` }
+          ]}]
+        }),
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        if (resp.status === 404) throw new Error("API proxy not found — make sure api/scan.js is in your GitHub repo.");
+        if (resp.status === 401) throw new Error("Invalid API key — check ANTHROPIC_API_KEY in Vercel settings.");
+        throw new Error(`Error ${resp.status}: ${txt.slice(0, 100)}`);
+      }
+
+      const data = await resp.json();
+      if (data.error) throw new Error(`Anthropic: ${data.error.message}`);
+
+      const text = (data.content || []).map((b) => b.text || "").join("").trim();
+      const clean = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      const parsed = JSON.parse(clean);
+
+      // Apply matched fields to form
+      const filled = [];
+      const updates = {};
+
+      if (parsed.year && YEARS.includes(parsed.year)) { updates.year = parsed.year; filled.push("Year"); }
+      const make = matchMake(parsed.make);
+      if (make) { updates.make = make; filled.push("Make"); }
+      const model = matchModel(make, parsed.model);
+      if (model) { updates.model = model; filled.push("Model"); }
+      const trim = matchTrim(make, model, parsed.trim);
+      if (trim) { updates.trim = trim; filled.push("Trim"); }
+      if (parsed.vin && parsed.vin.length === 17) { updates.vin = parsed.vin; filled.push("VIN"); }
+      if (parsed.mileage && Number(parsed.mileage) > 0) { updates.mileage = String(parsed.mileage); filled.push("Mileage"); }
+      if (parsed.purchaseDate) { updates.purchaseDate = parsed.purchaseDate; filled.push("Purchase Date"); }
+      if (parsed.purchasePrice && Number(parsed.purchasePrice) > 0) { updates.purchasePrice = String(parsed.purchasePrice); filled.push("Purchase Price"); }
+
+      setForm((p) => ({ ...p, ...updates }));
+      setFieldsScanned(filled);
+
+      if (filled.length === 0) setScanError("Document scanned but no vehicle details found. Please fill in manually.");
+
+    } catch (e) {
+      console.error("Vehicle scan error:", e);
+      setScanError(e.message || "Could not read document.");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   return (
     <div style={{ animation: "slideUp 0.2s ease" }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px" }}>Add Vehicle</h1>
+
+      {/* AI Document Scanner */}
+      <div style={{ background: `linear-gradient(135deg, ${C.navy}, #283593)`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <Ico name="spark" size={18} color={C.amber} />
+          <span style={{ fontWeight: 800, fontSize: 16, color: C.white }}>AI Document Scanner</span>
+          <span style={{ background: C.amber, color: C.white, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>SMART</span>
+        </div>
+        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, margin: "0 0 14px", lineHeight: 1.5 }}>
+          Upload your Copart / IAA bill of sale or any purchase document — AI reads it and fills the form automatically.
+        </p>
+
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+          onChange={(e) => { if (e.target.files[0]) scanDocument(e.target.files[0]); e.target.value = ""; }} />
+        <input ref={uploadRef} type="file" accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.heic,.webp"
+          style={{ display: "none" }} onChange={(e) => { if (e.target.files[0]) scanDocument(e.target.files[0]); e.target.value = ""; }} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <button onClick={() => cameraRef.current?.click()} disabled={scanning}
+            style={{ background: C.amber, border: "none", borderRadius: 12, padding: "14px 10px", cursor: scanning ? "not-allowed" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, opacity: scanning ? 0.7 : 1 }}>
+            <Ico name="camera" size={28} color={C.white} />
+            <span style={{ color: C.white, fontWeight: 700, fontSize: 14 }}>Take Photo</span>
+          </button>
+          <button onClick={() => uploadRef.current?.click()} disabled={scanning}
+            style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 12, padding: "14px 10px", cursor: scanning ? "not-allowed" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, opacity: scanning ? 0.7 : 1 }}>
+            <Ico name="upload" size={28} color={C.white} />
+            <span style={{ color: C.white, fontWeight: 700, fontSize: 14 }}>Upload PDF / Image</span>
+          </button>
+        </div>
+
+        {scanning && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+            <div style={{ width: 18, height: 18, border: "3px solid rgba(255,255,255,0.3)", borderTop: "3px solid #FF6F00", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+            <span style={{ color: C.amber, fontWeight: 600, fontSize: 14 }}>Reading document with AI...</span>
+          </div>
+        )}
+
+        {fieldsScanned.length > 0 && (
+          <div style={{ background: "rgba(0,137,123,0.25)", border: "1px solid rgba(0,137,123,0.5)", borderRadius: 10, padding: "12px 14px", marginTop: 12 }}>
+            <div style={{ fontWeight: 700, color: "#69F0AE", fontSize: 14, marginBottom: 6 }}>
+              ✅ Auto-filled {fieldsScanned.length} field{fieldsScanned.length !== 1 ? "s" : ""}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {fieldsScanned.map((f) => (
+                <span key={f} style={{ background: "rgba(105,240,174,0.15)", color: "#69F0AE", fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 20, border: "1px solid rgba(105,240,174,0.3)" }}>{f}</span>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>Review fields below and adjust anything needed.</div>
+          </div>
+        )}
+
+        {scanError && (
+          <div style={{ background: "rgba(229,57,53,0.2)", border: "1px solid rgba(229,57,53,0.5)", borderRadius: 10, padding: "12px 14px", marginTop: 12 }}>
+            <div style={{ color: "#FF8A80", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>⚠️ Scan issue</div>
+            <div style={{ color: "#FF8A80", fontSize: 12 }}>{scanError}</div>
+          </div>
+        )}
+
+        {scanDoc && !scanning && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ width: 40, height: 40, borderRadius: 6, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {scanDoc.name.endsWith(".pdf")
+                ? <Ico name="file" size={20} color={C.amber} />
+                : <img src={scanDoc.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 6 }} alt="" />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: C.white, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scanDoc.name}</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Document scanned</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Manual form */}
       <div style={{ ...S.card, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <Select label="Year" value={form.year} options={YEARS} onChange={(v) => set("year", v)} placeholder="Select year..." />
         <Select label="Make" value={form.make} options={MAKES} onChange={(v) => { set("make", v); set("model", ""); set("trim", ""); }} placeholder="Select make..." />
         <Select label="Model" value={form.model} options={models} onChange={(v) => { set("model", v); set("trim", ""); }} placeholder={form.make ? "Select model..." : "Select make first"} />
         <Select label="Trim" value={form.trim} options={trims} onChange={(v) => set("trim", v)} placeholder={trims.length ? "Select trim..." : "Select model first"} />
-        <Field label="VIN (optional)" value={form.vin} onChange={(v) => set("vin", v)} placeholder="1HGCM82633A123456" />
+        <Field label="VIN" value={form.vin} onChange={(v) => set("vin", v)} placeholder="1HGCM82633A123456" />
         <Field label="Mileage (km)" value={form.mileage} onChange={(v) => set("mileage", v)} placeholder="142000" type="number" />
         <Field label="Purchase Date" value={form.purchaseDate} onChange={(v) => set("purchaseDate", v)} type="date" />
-        <Field label="Purchase Price (CAD)" value={form.purchasePrice} onChange={(v) => set("purchasePrice", v)} placeholder="6800" type="number" />
-        <Field label="Estimated Sale Price (CAD)" value={form.estimatedSale} onChange={(v) => set("estimatedSale", v)} placeholder="12500" type="number" />
+        <Field label="Purchase Price (CAD)" value={String(form.purchasePrice)} onChange={(v) => set("purchasePrice", v)} placeholder="6800" type="number" />
+        <Field label="Estimated Sale Price (CAD)" value={String(form.estimatedSale)} onChange={(v) => set("estimatedSale", v)} placeholder="12500" type="number" />
         <Btn full color={C.blue} size="lg" disabled={saving} onClick={() => {
           if (!form.year || !form.make || !form.model || !form.purchasePrice) { alert("Year, Make, Model and Purchase Price are required."); return; }
           onSave({ ...form, purchasePrice: Number(form.purchasePrice), estimatedSale: Number(form.estimatedSale) || 0 });
