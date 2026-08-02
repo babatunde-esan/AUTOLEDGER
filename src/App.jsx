@@ -739,10 +739,10 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
       const mediaType = file.type || "image/jpeg";
       const isPdf = file.type === "application/pdf";
 
-      // Store receipt immediately
+      // Store receipt immediately regardless of scan result
       setReceipts((prev) => [...prev, { dataUrl, name: file.name || (isPdf ? "receipt.pdf" : "receipt.jpg"), type: mediaType }]);
 
-      // AI scan
+      // AI scan via proxy
       const contentBlock = isPdf
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
         : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
@@ -752,23 +752,37 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 800,
+          max_tokens: 1000,
           messages: [{ role: "user", content: [
             contentBlock,
-            { type: "text", text: 'You are scanning an automotive expense receipt for a Canadian vehicle reseller. Extract data and return ONLY valid JSON, nothing else:\n{"vendor":"store or shop name","date":"YYYY-MM-DD or empty","amount":number,"item":"best match from: Battery,Alternator,Starter,Transmission,Engine,Brakes,Suspension,Steering,Oil Change,Front Bumper,Rear Bumper,Front Fender,Rear Fender,Hood,Door,Mirror,Headlight,Tail Light,Windshield,Tire,Rim,Oil,Coolant,Mechanic Labor,Body Shop Labor,Painting,Detailing,Safety Certificate,Licensing,Other","category":"Mechanical|Exterior|Tires & Wheels|Fluids|Labor|Fees|Other","note":"part number, quantity, or key detail"}' }
+            { type: "text", text: 'You are scanning an automotive expense receipt for a Canadian vehicle reseller. Extract ALL relevant data and return ONLY valid JSON, nothing else:\n{"vendor":"store or shop name","date":"YYYY-MM-DD or empty","amount":number (total amount paid, largest charge if multiple),"item":"best match from: Battery,Alternator,Starter,Transmission,Engine,Brakes,Suspension,Steering,Oil Change,Front Bumper,Rear Bumper,Front Fender,Rear Fender,Hood,Door,Mirror,Headlight,Tail Light,Windshield,Tire,Rim,Oil,Coolant,Mechanic Labor,Body Shop Labor,Painting,Detailing,Safety Certificate,Licensing,Auction Fee,Other","category":"Mechanical|Exterior|Tires & Wheels|Fluids|Labor|Fees|Other","note":"vehicle info, lot number, VIN, or key charges"}' }
           ]}]
         }),
       });
 
+      // Check for HTTP errors (e.g. 404 = proxy not found, 500 = server error)
+      if (!resp.ok) {
+        const errText = await resp.text();
+        if (resp.status === 404) throw new Error("API proxy not found (404) — make sure api/scan.js is in your GitHub repo and redeployed.");
+        if (resp.status === 401) throw new Error("Invalid API key — check ANTHROPIC_API_KEY in Vercel environment variables.");
+        throw new Error(`Server error ${resp.status}: ${errText.slice(0, 120)}`);
+      }
+
       const data = await resp.json();
-      if (data.error) throw new Error(data.error.message);
+
+      // Anthropic API-level errors
+      if (data.error) throw new Error(`Anthropic: ${data.error.message || JSON.stringify(data.error)}`);
+
       const text = (data.content || []).map((b) => b.text || "").join("").trim();
+      if (!text) throw new Error("AI returned empty response.");
+
       const clean = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
       const parsed = JSON.parse(clean);
       setScanResult(parsed);
+
     } catch (e) {
-      setScanError("Could not read receipt — please fill in manually.");
-      console.error(e);
+      console.error("Scan error:", e);
+      setScanError(e.message || "Unknown error — check browser console for details.");
     } finally {
       setScanning(false);
     }
@@ -855,8 +869,10 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
         )}
 
         {scanError && (
-          <div style={{ background: "rgba(229,57,53,0.2)", border: "1px solid rgba(229,57,53,0.4)", borderRadius: 10, padding: "10px 14px", marginTop: 12 }}>
-            <span style={{ color: "#FF8A80", fontSize: 13 }}>{scanError}</span>
+          <div style={{ background: "rgba(229,57,53,0.2)", border: "1px solid rgba(229,57,53,0.5)", borderRadius: 10, padding: "12px 14px", marginTop: 12 }}>
+            <div style={{ color: "#FF8A80", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>⚠️ Scan Failed</div>
+            <div style={{ color: "#FF8A80", fontSize: 12, lineHeight: 1.5 }}>{scanError}</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 6 }}>Your file is still attached above — fill in the form manually below.</div>
           </div>
         )}
 
