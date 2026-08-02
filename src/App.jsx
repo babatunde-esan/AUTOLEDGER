@@ -1214,8 +1214,8 @@ function AddExpenseForm({ vehicle, onSave, saving }) {
       }]);
 
       const contentBlock = isPdf
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
-        : { type: "image",    source: { type: "base64", media_type: mediaType, data: base64 } };
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64ForScan } }
+        : { type: "image",    source: { type: "base64", media_type: mediaType, data: base64ForScan } };
 
       const resp = await fetch("/api/scan", {
         method: "POST", headers: { "Content-Type": "application/json" },
