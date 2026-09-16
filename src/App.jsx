@@ -1255,7 +1255,7 @@ function AddVehicleView({onSave,saving}){
       const url=await fileToUrl(file);const base64=url.split(",")[1];const isPdf=file.type==="application/pdf";
       setScanDoc({dataUrl:url,name:file.name||(isPdf?"doc.pdf":"doc.jpg"),isPdf});
       const cb=isPdf?{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}}:{type:"image",source:{type:"base64",media_type:file.type||"image/jpeg",data:base64}};
-      const resp=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[cb,{type:"text",text:`Extract vehicle purchase details. Return ONLY valid JSON:\n{"year":"4-digit year","make":"manufacturer","model":"model name","trim":"trim or empty","vin":"17-char VIN or empty","mileage":"digits only or empty","purchaseDate":"YYYY-MM-DD or empty","purchasePrice":number or 0}`}]})});
+      const resp=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[cb,{type:"text",text:`Extract vehicle purchase details. Return ONLY valid JSON:\n{"year":"4-digit year","make":"manufacturer","model":"model name","trim":"trim or empty","vin":"17-char VIN or empty","mileage":"digits only or empty","purchaseDate":"YYYY-MM-DD or empty","purchasePrice":number or 0}`}]}]})});
       if(!resp.ok)throw new Error(`Error ${resp.status}`);
       const data=await resp.json();
       const text=(data.content||[]).map(b=>b.text||"").join("").trim();
@@ -1325,7 +1325,7 @@ function AddExpenseView({v,onSave,saving}){
       else{let c=await compressImg(url,800,0.7);if(c.length*3/4>200*1024)c=await compressImg(url,600,0.5);stored=c;}
       setReceipts(p=>[...p,{dataUrl:isPdf?url:stored,firestoreDataUrl:stored,localId:lid,name:file.name||"receipt",type:mt,isPdf}]);
       const cb=isPdf?{type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}}:{type:"image",source:{type:"base64",media_type:mt,data:base64}};
-      const resp=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[cb,{type:"text",text:`Scan this automotive receipt. Return ONLY valid JSON:\n{"vendor":"store name","date":"YYYY-MM-DD or empty","amount":number,"item":"part or service name","category":"Mechanical|Exterior|Tires & Wheels|Fluids|Labor|Fees|Other","note":"key details"}`}]})});
+      const resp=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[cb,{type:"text",text:`Scan this automotive receipt. Return ONLY valid JSON:\n{"vendor":"store name","date":"YYYY-MM-DD or empty","amount":number,"item":"part or service name","category":"Mechanical|Exterior|Tires & Wheels|Fluids|Labor|Fees|Other","note":"key details"}`}]}]})});
       if(!resp.ok)throw new Error(`Error ${resp.status}`);
       const data=await resp.json();
       const text=(data.content||[]).map(b=>b.text||"").join("").trim();
