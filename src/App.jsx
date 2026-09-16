@@ -1049,7 +1049,7 @@ function DealQueue({ items, lossLog, onAdd, onWon, onLoss, saving }) {
 
                 {/* Countdown bar */}
                 <div style={{ background:C.navy, padding:"8px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6 }}><Ico name="clock" size={14} color:"rgba(255,255,255,0.5)" /><span style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>Sale in</span></div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}><Ico name="clock" size={14} color="rgba(255,255,255,0.5)" /><span style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>Sale in</span></div>
                   <span style={{ fontSize:14, fontWeight:800, color: urgent ? "#FF8A80" : C.amber, fontVariantNumeric:"tabular-nums" }}>{cdText}</span>
                 </div>
 
