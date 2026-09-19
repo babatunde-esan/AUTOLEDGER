@@ -844,6 +844,51 @@ function CalcView(){
 }
 
 // ── Bid Radar ─────────────────────────────────────────────────────────────────
+// ── Ontario retail price estimator (static lookup, updated to reflect 2023-2025 Ontario market) ──
+// Ranges are typical private-sale retail in CAD for Ontario. Used only when no manual retail is entered.
+// Format: { "MAKE|MODEL": { minYear: [low, high], ... } }
+const RETAIL_EST = {
+  "Honda|CR-V":       {"2018":[19000,24000],"2019":[21000,26000],"2020":[23000,27000],"2021":[25000,29000],"2022":[27000,32000],"2023":[29000,35000],"2024":[31000,37000]},
+  "Toyota|RAV4":      {"2018":[21000,26000],"2019":[23000,28000],"2020":[25000,30000],"2021":[27000,32000],"2022":[30000,36000],"2023":[32000,38000],"2024":[34000,40000]},
+  "Honda|Civic":      {"2018":[14000,18000],"2019":[15000,19000],"2020":[17000,21000],"2021":[19000,23000],"2022":[21000,25000],"2023":[23000,27000],"2024":[24000,28000]},
+  "Toyota|Camry":     {"2018":[16000,21000],"2019":[18000,23000],"2020":[20000,25000],"2021":[22000,27000],"2022":[24000,29000],"2023":[26000,31000],"2024":[28000,33000]},
+  "Ford|F-150":       {"2018":[28000,38000],"2019":[30000,40000],"2020":[32000,44000],"2021":[35000,48000],"2022":[38000,52000],"2023":[42000,56000],"2024":[44000,60000]},
+  "RAM|1500":         {"2018":[26000,36000],"2019":[28000,38000],"2020":[30000,42000],"2021":[33000,46000],"2022":[36000,50000],"2023":[38000,54000],"2024":[40000,56000]},
+  "Dodge|Grand Caravan":{"2018":[11000,15000],"2019":[12000,16000],"2020":[14000,18000],"2021":[16000,20000],"2022":[18000,22000]},
+  "Toyota|Sienna":    {"2018":[26000,33000],"2019":[28000,35000],"2020":[30000,38000],"2021":[33000,42000],"2022":[36000,46000],"2023":[38000,48000],"2024":[40000,52000]},
+  "Toyota|Highlander":{"2018":[28000,36000],"2019":[30000,38000],"2020":[32000,40000],"2021":[34000,43000],"2022":[36000,46000],"2023":[38000,49000],"2024":[40000,52000]},
+  "Honda|Pilot":      {"2018":[25000,32000],"2019":[27000,34000],"2020":[29000,36000],"2021":[31000,38000],"2022":[33000,41000],"2023":[35000,44000],"2024":[37000,47000]},
+  "Honda|Odyssey":    {"2018":[24000,30000],"2019":[26000,32000],"2020":[28000,35000],"2021":[30000,38000],"2022":[32000,41000],"2023":[34000,43000],"2024":[36000,46000]},
+  "Jeep|Grand Cherokee":{"2018":[24000,32000],"2019":[26000,34000],"2020":[28000,36000],"2021":[30000,40000],"2022":[33000,44000],"2023":[35000,47000],"2024":[37000,50000]},
+  "Ford|Explorer":    {"2018":[22000,29000],"2019":[24000,31000],"2020":[26000,34000],"2021":[28000,37000],"2022":[30000,40000],"2023":[32000,43000],"2024":[34000,46000]},
+  "Hyundai|Tucson":   {"2018":[14000,19000],"2019":[15000,20000],"2020":[17000,22000],"2021":[19000,24000],"2022":[21000,27000],"2023":[23000,29000],"2024":[25000,31000]},
+  "Kia|Sorento":      {"2018":[16000,21000],"2019":[17000,23000],"2020":[19000,25000],"2021":[22000,28000],"2022":[24000,31000],"2023":[26000,33000],"2024":[28000,35000]},
+  "Kia|Telluride":    {"2020":[29000,36000],"2021":[31000,39000],"2022":[34000,43000],"2023":[36000,46000],"2024":[38000,49000]},
+  "Hyundai|Santa Fe": {"2018":[20000,26000],"2019":[22000,28000],"2020":[24000,30000],"2021":[26000,33000],"2022":[28000,36000],"2023":[30000,39000],"2024":[32000,42000]},
+  "Chevrolet|Equinox":{"2018":[13000,17000],"2019":[14000,18000],"2020":[16000,20000],"2021":[18000,23000],"2022":[20000,25000],"2023":[22000,27000],"2024":[24000,30000]},
+  "GMC|Sierra":       {"2018":[26000,36000],"2019":[28000,38000],"2020":[30000,42000],"2021":[33000,46000],"2022":[36000,50000],"2023":[38000,54000],"2024":[40000,56000]},
+  "Nissan|Rogue":     {"2018":[14000,18000],"2019":[15000,19000],"2020":[17000,21000],"2021":[19000,24000],"2022":[21000,26000],"2023":[23000,28000],"2024":[25000,31000]},
+  "Toyota|Tacoma":    {"2018":[24000,32000],"2019":[26000,34000],"2020":[28000,36000],"2021":[30000,40000],"2022":[33000,44000],"2023":[35000,46000],"2024":[37000,49000]},
+  "Toyota|4Runner":   {"2018":[30000,40000],"2019":[32000,42000],"2020":[34000,44000],"2021":[36000,47000],"2022":[38000,50000],"2023":[40000,53000],"2024":[42000,56000]},
+  "Mazda|CX-5":       {"2018":[17000,22000],"2019":[18000,23000],"2020":[20000,25000],"2021":[22000,27000],"2022":[24000,30000],"2023":[26000,32000],"2024":[28000,34000]},
+  "Subaru|Outback":   {"2018":[18000,24000],"2019":[20000,26000],"2020":[22000,28000],"2021":[24000,30000],"2022":[26000,33000],"2023":[28000,35000],"2024":[30000,38000]},
+  "Subaru|Forester":  {"2018":[16000,21000],"2019":[18000,23000],"2020":[20000,25000],"2021":[22000,27000],"2022":[24000,30000],"2023":[26000,32000],"2024":[28000,34000]},
+  "Dodge|Challenger": {"2018":[22000,32000],"2019":[24000,34000],"2020":[26000,37000],"2021":[28000,40000],"2022":[30000,43000],"2023":[32000,46000]},
+  "Chrysler|Pacifica": {"2018":[18000,24000],"2019":[20000,26000],"2020":[22000,28000],"2021":[24000,31000],"2022":[26000,34000],"2023":[28000,37000],"2024":[30000,40000]},
+};
+
+function getRetailEstimate(make, model, year) {
+  const key = `${make}|${model}`;
+  const table = RETAIL_EST[key];
+  if (!table) return null;
+  // Find the closest year at or below the vehicle year
+  const y = String(year);
+  if (table[y]) return table[y];
+  const years = Object.keys(table).map(Number).sort((a,b)=>b-a);
+  const closest = years.find(yr => yr <= Number(year));
+  return closest ? table[String(closest)] : null;
+}
+
 function RadarView({queue,onAddQueue,saving}){
   const[tab,setTab]=useState("scout");
   const[form,setForm]=useState({make:"Honda",model:"CR-V",year:"",source:"Copart Canada",lot:"",saleDate:"",saleTime:"10:00",maxBid:"",retail:"",notes:""});
@@ -851,8 +896,44 @@ function RadarView({queue,onAddQueue,saving}){
   const[maxBudget,setMaxBudget]=useState("20000");
   const[minProfit,setMinProfit]=useState("3000");
 
+  // VIN decode state
+  const[vin,setVin]=useState("");
+  const[vinLoading,setVinLoading]=useState(false);
+  const[vinResult,setVinResult]=useState(null);
+  const[vinError,setVinError]=useState("");
+
   const models=form.make?Object.keys(VEHICLE_DB[form.make]||{}).sort():[];
   const sf=(k,v)=>setForm(p=>({...p,[k]:v}));
+
+  // Retail estimate for current form selection
+  const retailEst = form.make && form.model && form.year
+    ? getRetailEstimate(form.make, form.model, form.year)
+    : null;
+
+  // VIN decode via /api/vin Vercel proxy -> NHTSA vPIC (free, no key)
+  async function decodeVin(){
+    const v=vin.trim();
+    if(v.length<11){setVinError("Enter at least 11 characters of the VIN.");return;}
+    setVinLoading(true);setVinError("");setVinResult(null);
+    try{
+      const resp=await fetch(`/api/vin?vin=${encodeURIComponent(v)}`);
+      const data=await resp.json();
+      if(!resp.ok||!data.success){setVinError(data.error||"VIN not found.");return;}
+      const veh=data.vehicle;
+      setVinResult(veh);
+      // Auto-fill form fields from VIN decode
+      const updates={};
+      if(veh.year&&YEARS.includes(veh.year))updates.year=veh.year;
+      const mk=MAKES.find(m=>m.toUpperCase()===veh.make?.toUpperCase());
+      if(mk){
+        updates.make=mk;
+        const mo=Object.keys(VEHICLE_DB[mk]||{}).find(m=>m.toUpperCase()===veh.model?.toUpperCase());
+        if(mo)updates.model=mo;
+      }
+      setForm(p=>({...p,...updates}));
+    }catch(e){setVinError("Could not reach VIN decoder. Check connection.");}
+    finally{setVinLoading(false);}
+  }
 
   function calcScore(){
     const bid=Number(form.maxBid)||0,ret=Number(form.retail)||0;
@@ -875,19 +956,21 @@ function RadarView({queue,onAddQueue,saving}){
     await onAddQueue({...form,saleTimestamp:ts,maxBid:Number(form.maxBid)||0,retail:Number(form.retail)||0,dealScore:score});
     setSubmitted(true);setTimeout(()=>setSubmitted(false),3000);
     setForm(p=>({...p,lot:"",saleDate:"",saleTime:"10:00",maxBid:"",retail:"",notes:""}));
+    setVin("");setVinResult(null);
   }
 
   return(
     <div>
       <div style={{marginBottom:16}}>
         <div style={{fontSize:20,fontWeight:800,color:T.textPrimary}}>Bid radar</div>
-        <div style={{fontSize:12,color:T.textMuted,marginTop:2}}>Scout live lots on Copart and IAA · score before you bid</div>
+        <div style={{fontSize:12,color:T.textMuted,marginTop:2}}>VIN decode · retail estimate · score before you bid</div>
       </div>
       <Tabs tabs={[{id:"scout",label:"Scout lots"},{id:"models",label:"Target models"},{id:"prefs",label:"Preferences"}]} active={tab} onChange={setTab}/>
       <div style={{height:14}}/>
 
       {tab==="scout"&&(
         <>
+          {/* Live search launchers */}
           <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:8}}>Open live auction search</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[{name:"Copart Canada",emoji:"🇨🇦",color:T.green,bg:T.greenBg,fn:"copart"},{name:"IAA Canada",emoji:"🍁",color:T.blue,bg:T.blueBg,fn:"iaa"}].map(site=>(
@@ -897,12 +980,56 @@ function RadarView({queue,onAddQueue,saving}){
               </button>
             ))}
           </div>
-          <div style={{fontSize:11,color:T.textSecondary,background:T.surfaceHi,borderRadius:10,padding:"10px 12px",marginBottom:16,lineHeight:1.5}}>Find a lot on Copart or IAA, then enter the details below to score it and add it to your queue for live countdown tracking.</div>
+
+          {/* VIN decoder — free NHTSA vPIC via /api/vin */}
+          <Card style={{padding:16,marginBottom:14,border:`1px solid ${T.teal}33`}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <span style={{fontSize:16}}>🔎</span>
+              <span style={{fontWeight:700,fontSize:14,color:T.textPrimary}}>VIN decoder</span>
+              <span style={{background:T.tealBg,color:T.teal,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20}}>FREE · NHTSA</span>
+            </div>
+            <div style={{fontSize:11,color:T.textSecondary,marginBottom:12,lineHeight:1.5}}>
+              Paste the VIN from the Copart or IAA lot page. The app decodes it instantly and fills in the year, make, and model using the official US government vehicle database — no cost, no account needed.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={vin} onChange={e=>setVin(e.target.value.toUpperCase())} placeholder="e.g. 2HKRM4H73MH000000" maxLength={17}
+                style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 14px",color:T.textPrimary,fontSize:14,outline:"none",fontFamily:"monospace",letterSpacing:1}}/>
+              <button onClick={decodeVin} disabled={vinLoading||vin.length<11} style={{background:vinLoading?"#334155":T.teal,border:"none",borderRadius:10,padding:"11px 18px",cursor:vinLoading||vin.length<11?"not-allowed":"pointer",color:"#000",fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
+                {vinLoading?"…":"Decode"}
+              </button>
+            </div>
+            {vinError&&<div style={{background:T.redBg,border:`1px solid ${T.red}33`,borderRadius:8,padding:"8px 12px",marginTop:10,fontSize:12,color:T.red}}>{vinError}</div>}
+            {vinResult&&(
+              <div style={{background:T.tealBg,border:`1px solid ${T.teal}44`,borderRadius:12,padding:14,marginTop:12}}>
+                <div style={{fontWeight:700,color:T.teal,fontSize:13,marginBottom:8}}>✅ VIN decoded — form updated</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {[
+                    ["Year", vinResult.year],
+                    ["Make", vinResult.make],
+                    ["Model", vinResult.model],
+                    ["Trim", vinResult.trim||"—"],
+                    ["Body", vinResult.bodyClass||"—"],
+                    ["Drive", vinResult.driveType||"—"],
+                    ["Engine", vinResult.engineSize?`${Number(vinResult.engineSize).toFixed(1)}L ${vinResult.cylinders||""}cyl`:"—"],
+                    ["Fuel", vinResult.fuelType||"—"],
+                  ].map(([l,v])=>(
+                    <div key={l}>
+                      <span style={{fontSize:10,color:T.textMuted}}>{l}: </span>
+                      <span style={{fontSize:12,fontWeight:600,color:T.textPrimary}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {vinResult.plantCountry&&<div style={{fontSize:11,color:T.textMuted,marginTop:8}}>Built in {vinResult.plantCountry}{vinResult.plant?` · ${vinResult.plant}`:""}</div>}
+              </div>
+            )}
+          </Card>
+
+          {/* Lot details form */}
           <Card style={{padding:16,marginBottom:14,display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontSize:11,fontWeight:700,color:T.textMuted}}>Lot details</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <Inp label="Year" value={form.year} onChange={v=>sf("year",v)} placeholder="2022" type="number"/>
-              <Sel label="Make" value={form.make} options={MAKES} onChange={v=>{sf("make",v);sf("model","");}}/>
+              <Sel label="Make" value={form.make} options={MAKES} onChange={v=>{sf("make",v);sf("model","");setVinResult(null);}}/>
             </div>
             <Sel label="Model" value={form.model} options={models} onChange={v=>sf("model",v)} placeholder={form.make?"Select model…":"Select make first"}/>
             <Sel label="Auction source" value={form.source} options={["Copart Canada","IAA Canada"]} onChange={v=>sf("source",v)}/>
@@ -911,11 +1038,37 @@ function RadarView({queue,onAddQueue,saving}){
               <Inp label="Sale date" value={form.saleDate} onChange={v=>sf("saleDate",v)} type="date"/>
               <Inp label="Sale time" value={form.saleTime} onChange={v=>sf("saleTime",v)} type="time"/>
             </div>
+
+            {/* Retail estimate card — auto-shown when make/model/year are set */}
+            {retailEst&&!form.retail&&(
+              <div style={{background:T.purpleBg,border:`1px solid ${T.purple}44`,borderRadius:12,padding:12}}>
+                <div style={{fontSize:11,color:T.purple,fontWeight:700,marginBottom:6}}>📊 Ontario retail estimate</div>
+                <div style={{fontSize:13,color:T.textPrimary,fontWeight:600,marginBottom:4}}>
+                  {fmt(retailEst[0])} – {fmt(retailEst[1])}
+                </div>
+                <div style={{fontSize:11,color:T.textSecondary,marginBottom:10}}>Typical private-sale range in Ontario for a {form.year} {form.make} {form.model} in good condition.</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>sf("retail",String(retailEst[0]))} style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 6px",cursor:"pointer",fontSize:12,fontWeight:600,color:T.textSecondary}}>Use low {fmt(retailEst[0])}</button>
+                  <button onClick={()=>sf("retail",String(Math.round((retailEst[0]+retailEst[1])/2)))} style={{flex:1,background:T.purple,border:"none",borderRadius:8,padding:"7px 6px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff"}}>Use mid {fmt(Math.round((retailEst[0]+retailEst[1])/2))}</button>
+                  <button onClick={()=>sf("retail",String(retailEst[1]))} style={{flex:1,background:T.surfaceHi,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 6px",cursor:"pointer",fontSize:12,fontWeight:600,color:T.textSecondary}}>Use high {fmt(retailEst[1])}</button>
+                </div>
+              </div>
+            )}
+
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <Inp label="Your max bid ($)" value={form.maxBid} onChange={v=>sf("maxBid",v)} placeholder="13000" type="number"/>
               <Inp label="Market retail ($)" value={form.retail} onChange={v=>sf("retail",v)} placeholder="23000" type="number"/>
             </div>
+            {form.retail&&retailEst&&(
+              <div style={{fontSize:11,color:T.textMuted}}>
+                Estimate range: {fmt(retailEst[0])} – {fmt(retailEst[1])}
+                {Number(form.retail)<retailEst[0]&&<span style={{color:T.amber}}> · Your retail is below the low estimate</span>}
+                {Number(form.retail)>retailEst[1]&&<span style={{color:T.green}}> · Your retail is above the high estimate</span>}
+              </div>
+            )}
             <Inp label="Notes (damage, condition…)" value={form.notes} onChange={v=>sf("notes",v)} placeholder="Front-end damage, airbag deployed…"/>
+
+            {/* Live deal score */}
             {(Number(form.maxBid)>0&&Number(form.retail)>0)&&(
               <div style={{background:T.surfaceHi,borderRadius:12,padding:14,display:"flex",alignItems:"center",gap:14}}>
                 <div style={{width:60,height:60,borderRadius:14,background:`${scoreColor(score)}22`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -936,22 +1089,26 @@ function RadarView({queue,onAddQueue,saving}){
 
       {tab==="models"&&(
         <>
-          <div style={{fontSize:11,color:T.textSecondary,marginBottom:12,lineHeight:1.5}}>Your target models ranked by Ontario market performance. Tap Copart or IAA to search live lots for that model right now.</div>
-          {PREFERRED_MODELS.map((m,i)=>(
-            <Card key={m.make+m.model} style={{padding:"13px 16px",marginBottom:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:32,height:32,borderRadius:8,background:T.amberBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:T.amber,flexShrink:0}}>#{i+1}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:14,color:T.textPrimary}}>{m.make} {m.model}</div>
-                  <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>{m.why}</div>
+          <div style={{fontSize:11,color:T.textSecondary,marginBottom:12,lineHeight:1.5}}>Your target models ranked by Ontario market performance. Tap Copart or IAA to open a live search for that model right now.</div>
+          {PREFERRED_MODELS.map((m,i)=>{
+            const est=getRetailEstimate(m.make,m.model,"2022");
+            return(
+              <Card key={m.make+m.model} style={{padding:"13px 16px",marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:T.amberBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:T.amber,flexShrink:0}}>#{i+1}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:T.textPrimary}}>{m.make} {m.model}</div>
+                    <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>{m.why}</div>
+                    {est&&<div style={{fontSize:11,color:T.purple,marginTop:2}}>Ontario retail ~{fmt(est[0])}–{fmt(est[1])}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>window.open(AUCTION_URLS.copart(m.make,m.model),"_blank")} style={{background:T.greenBg,border:`1px solid ${T.green}44`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:T.green}}>Copart</button>
+                    <button onClick={()=>window.open(AUCTION_URLS.iaa(m.make,m.model),"_blank")} style={{background:T.blueBg,border:`1px solid ${T.blue}44`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:T.blue}}>IAA</button>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:6}}>
-                  <button onClick={()=>window.open(AUCTION_URLS.copart(m.make,m.model),"_blank")} style={{background:T.greenBg,border:`1px solid ${T.green}44`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:T.green}}>Copart</button>
-                  <button onClick={()=>window.open(AUCTION_URLS.iaa(m.make,m.model),"_blank")} style={{background:T.blueBg,border:`1px solid ${T.blue}44`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700,color:T.blue}}>IAA</button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </>
       )}
 
@@ -961,7 +1118,18 @@ function RadarView({queue,onAddQueue,saving}){
           <Inp label="Max budget per vehicle ($)" value={maxBudget} onChange={setMaxBudget} type="number" placeholder="20000"/>
           <Inp label="Minimum target profit ($)" value={minProfit} onChange={setMinProfit} type="number" placeholder="3000"/>
           <Sel label="Preferred auction region" value="Hamilton / Niagara" options={["Hamilton / Niagara","GTA and surrounding","All Ontario"]} onChange={()=>{}}/>
-          <div style={{fontSize:11,color:T.textSecondary,background:T.surfaceHi,borderRadius:10,padding:"10px 12px",lineHeight:1.5}}>Preferences weight the deal score — a Honda CR-V within your budget at 20%+ ROI near Hamilton scores highest.</div>
+          <div style={{background:T.surfaceHi,borderRadius:10,padding:"12px 14px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:6}}>How deal scoring works</div>
+            <div style={{fontSize:11,color:T.textSecondary,lineHeight:1.6}}>
+              Score is calculated from your spread (retail minus max bid), ROI percentage, and whether the model is on your preferred list. A Honda CR-V with 30%+ ROI scores in the 80s. Scores above 85 are hot deals. Below 50 is a pass.
+            </div>
+          </div>
+          <div style={{background:T.purpleBg,border:`1px solid ${T.purple}33`,borderRadius:10,padding:"12px 14px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.purple,marginBottom:4}}>About retail estimates</div>
+            <div style={{fontSize:11,color:T.textSecondary,lineHeight:1.6}}>
+              Retail estimates shown in the Scout tab are based on typical Ontario private-sale prices for your make, model and year. They are directional only — use them as a starting point, then verify on AutoTrader or Kijiji before bidding.
+            </div>
+          </div>
         </Card>
       )}
     </div>
