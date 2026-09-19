@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import {
   getFirestore, collection, doc, onSnapshot,
-  addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp
+  addDoc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -58,24 +58,24 @@ const VEHICLE_DB = {
   BMW:{"3 Series":["320i","330i","M340i"],"5 Series":["530i","540i","M550i"],X3:["sDrive30i","xDrive30i","M40i"],X5:["sDrive40i","xDrive40i","M50i"]},
   Buick:{Enclave:["Preferred","Essence","Premium","Avenir"],Encore:["Preferred","Essence"],Envision:["Preferred","Essence","Avenir"]},
   Cadillac:{XT4:["Luxury","Premium Luxury","Sport"],XT5:["Luxury","Premium Luxury","Sport"],Escalade:["Luxury","Premium Luxury","Platinum"]},
-  Chevrolet:{Silverado:["WT","Custom","LT","RST","LTZ","High Country"],Equinox:["LS","LT","RS","Premier"],Traverse:["LS","LT","RS","Premier"],Malibu:["LS","LT","RS"],Colorado:["WT","LT","Z71","Trail Boss"]},
-  Chrysler:{"300":["Touring","S","Limited","Platinum"],Pacifica:["Touring","Touring L","Limited","Pinnacle"]},
-  Dodge:{"Grand Caravan":["SE","SXT","GT"],Durango:["SXT","GT","R/T","Citadel"],Challenger:["SXT","GT","R/T","Scat Pack"],Charger:["SXT","GT","R/T","Scat Pack"]},
-  Ford:{"F-150":["XL","XLT","Lariat","King Ranch","Platinum","Limited","Raptor"],Explorer:["Base","XLT","ST-Line","Limited","Platinum"],Escape:["S","SE","SE Sport","Titanium"],Edge:["SE","SEL","Titanium","ST"],Mustang:["EcoBoost","GT","Mach 1"],Ranger:["XL","XLT","Lariat"]},
-  GMC:{Sierra:["Base","SLE","Elevation","SLT","AT4","Denali"],Terrain:["SLE","SLT","AT4","Denali"],Acadia:["SLE","SLT","AT4","Denali"],Yukon:["SLE","SLT","AT4","Denali"]},
-  Honda:{"CR-V":["LX","EX","EX-L","Sport","Touring","Sport Hybrid","Touring Hybrid"],Civic:["LX","Sport","EX","EX-L","Touring","Si","Type R"],Accord:["LX","Sport","EX","EX-L","Touring"],Pilot:["LX","EX","EX-L","TrailSport","Touring","Elite"],Odyssey:["LX","EX","EX-L","Touring","Elite"],"HR-V":["LX","EX","EX-L","Sport"]},
-  Hyundai:{Tucson:["Essential","Preferred","Trend","Ultimate","N Line"],"Santa Fe":["Essential","Preferred","Trend","Ultimate"],Elantra:["Essential","Preferred","Sport","Luxury","N"],Sonata:["Essential","Preferred","Sport","Ultimate"],Kona:["Essential","Preferred","Trend","Ultimate"]},
-  Jeep:{"Grand Cherokee":["Laredo","Altitude","Limited","Trailhawk","Overland","Summit"],Wrangler:["Sport","Sport S","Sahara","Rubicon"],Cherokee:["Latitude","Limited","Trailhawk","Overland"],Compass:["Sport","North","Altitude","Limited"]},
-  Kia:{Sorento:["LX","S","EX","SX"],Sportage:["LX","EX","SX"],Telluride:["LX","S","EX","SX"],Forte:["LX","GT-Line","EX","GT"]},
+  Chevrolet:{Silverado:["WT","Custom","LT","RST","LTZ","High Country","ZR2"],Equinox:["LS","LT","RS","Premier"],Traverse:["LS","LT","RS","Premier","High Country"],Malibu:["LS","LT","RS","Premier"],Colorado:["WT","LT","Z71","Trail Boss","ZR2"],Blazer:["LT","RS","Premier","SS"],Trailblazer:["LS","LT","ACTIV","RS","Premier"],Trax:["LS","LT","ACTIV","RS"],Tahoe:["LS","LT","RST","Premier","High Country","Z71"],Suburban:["LS","LT","RST","Premier","High Country"],Spark:["LS","LT","ACTIV","2LT"]},
+  Chrysler:{"300":["Touring","Touring L","S","Limited","Platinum"],Pacifica:["Touring","Touring L","Limited","Pinnacle","Hybrid Touring","Hybrid Limited","Hybrid Pinnacle"],"Pacifica Hybrid":["Touring L","Limited","Pinnacle"]},
+  Dodge:{"Grand Caravan":["SE","SE Plus","SXT","GT"],Durango:["SXT","GT","R/T","Citadel","SRT 392","SRT Hellcat"],Challenger:["SXT","GT","R/T","Scat Pack","SRT 392","SRT Hellcat","SRT Hellcat Redeye"],Charger:["SXT","GT","R/T","Scat Pack","SRT 392","SRT Hellcat","SRT Hellcat Redeye"],Journey:["SE","SXT","Crossroad","GT"]},
+  Ford:{"F-150":["XL","XLT","Lariat","King Ranch","Platinum","Limited","Raptor","Tremor"],Explorer:["Base","XLT","ST-Line","Limited","Timberline","Platinum","ST"],Escape:["S","SE","SE Sport","Titanium","PHEV SE","PHEV Titanium"],Edge:["SE","SEL","Titanium","ST"],Mustang:["EcoBoost","EcoBoost Premium","GT","GT Premium","Mach 1","Shelby GT500"],Ranger:["XL","XLT","Lariat","Wildtrak"],Bronco:["Base","Big Bend","Black Diamond","Outer Banks","Badlands","Wildtrak","Raptor"],"Bronco Sport":["Base","Big Bend","Outer Banks","Badlands","Heritage"],Maverick:["XL","XLT","Lariat","Tremor"],Expedition:["XLT","Limited","King Ranch","Platinum","Timberline"]},
+  GMC:{Sierra:["Base","SLE","Elevation","SLT","AT4","AT4X","Denali","Denali Ultimate"],"Sierra 2500HD":["Base","SLE","SLT","AT4","Denali"],"Sierra 3500HD":["Base","SLE","SLT","AT4","Denali"],Terrain:["SLE","SLT","AT4","Denali"],Acadia:["SLE","SLT","AT4","Denali"],Yukon:["SLE","SLT","AT4","AT4X","Denali","Denali Ultimate"],"Yukon XL":["SLE","SLT","AT4","Denali"],Canyon:["Base","Elevation","AT4","Denali"]},
+  Honda:{"CR-V":["LX","EX","EX-L","Sport","Touring","Sport Hybrid","Touring Hybrid","Black Edition"],Civic:["LX","Sport","EX","EX-L","Touring","Si","Type R","Hatchback Sport","Hatchback EX-L"],Accord:["LX","Sport","EX","EX-L","Touring","Hybrid EX","Hybrid Touring"],Pilot:["LX","EX","EX-L","TrailSport","Touring","Elite","Black Edition"],Odyssey:["LX","EX","EX-L","Touring","Elite"],"HR-V":["LX","EX","EX-L","Sport"],Passport:["Sport","EX-L","Touring","Elite","TrailSport","Black Edition"],Ridgeline:["Sport","RTL","RTL-E","Black Edition"]},
+  Hyundai:{Tucson:["Essential","Preferred","Trend","N Line","Ultimate","Hybrid Preferred","Hybrid Ultimate","PHEV Preferred","PHEV Ultimate"],"Santa Fe":["Essential","Preferred","Trend","Ultimate","XRT","Calligraphy","Hybrid Preferred","Hybrid Calligraphy"],Elantra:["Essential","Preferred","Trend","Luxury","Sport","N Line","N","Hybrid Preferred","Hybrid Ultimate"],Sonata:["Essential","Preferred","Sport","Ultimate","N Line","Hybrid Essential","Hybrid Ultimate"],Kona:["Essential","Preferred","Trend","Urban","N Line","Ultimate","Electric Preferred","Electric Ultimate"],Palisade:["Essential","Preferred","Luxury","Calligraphy","XRT"],"Ioniq 5":["Essential","Preferred","Preferred Long Range","Ultimate Long Range"],"Ioniq 6":["Standard RWD","Preferred Standard RWD","Preferred Long Range RWD","Preferred Long Range AWD","Ultimate Long Range AWD"],Venue:["Essential","Preferred","Trend","Urban"]},
+  Jeep:{"Grand Cherokee":["Laredo","Altitude","Limited","Trailhawk","Overland","Summit","Summit Reserve","SRT","4xe Limited","4xe Trailhawk","4xe Summit"],Wrangler:["Sport","Sport S","Sahara","Rubicon","Willys","Willys Sport","4xe Sahara","4xe Rubicon"],Cherokee:["Latitude","Latitude Lux","Altitude","Limited","Trailhawk","Overland"],Compass:["Sport","North","Altitude","Limited","Trailhawk"],Gladiator:["Sport","Sport S","Willys","Rubicon","Overland","Mojave"],"Grand Wagoneer":["Series I","Series II","Series III","Obsidian"]},
+  Kia:{Sorento:["LX","S","EX","SX","SX Prestige"],Sportage:["LX","EX","SX","SX Prestige"],Telluride:["LX","S","EX","SX","X-Line","X-Pro"],Forte:["LX","GT-Line","EX","GT"],Sedona:["L","LX","EX","SX","SX+"],Carnival:["LX","EX","SX","SX Prestige"],Stinger:["GT","GT-Line","GT2"],K5:["LX","EX","GT-Line","GT"],Niro:["LX","EX","SX Touring","EV LX","EV EX","EV SX"],Soul:["LX","EX","GT-Line","Turbo"],Seltos:["LX","EX","SX"]},
   Lexus:{RX:["RX350","RX350L","RX450h"],NX:["NX250","NX350","NX350h"],ES:["ES250","ES300h","ES350"],GX:["GX460"]},
   Lincoln:{Navigator:["Standard","Reserve","Black Label"],Aviator:["Standard","Reserve","Black Label"],Nautilus:["Standard","Select","Reserve"]},
-  Mazda:{"CX-5":["GX","GS","GT","Signature"],"CX-9":["GS","GT","Signature"],Mazda3:["GX","GS","GT","Turbo"]},
+  Mazda:{"CX-5":["GX","GS","GT","GT Turbo","Signature"],"CX-9":["GS","GS-L","GT","Signature"],"CX-50":["GX","GX AWD","GS","GS-L","GT","GT Turbo","Meridian Edition"],"CX-30":["GX","GS","GT","GT Turbo"],Mazda3:["GX","GS","GT","GT Turbo","Sport GX","Sport GT"],Mazda6:["GX","GS","GT","Signature"],"MX-5 Miata":["GX","GS","GT","GT-S","RF GT","RF GT-S"]},
   Mercedes:{"C-Class":["C300","C43 AMG"],"E-Class":["E350","E450"],GLE:["GLE350","GLE450"],GLC:["GLC300","GLC43"]},
-  Nissan:{Rogue:["S","SV","SL","Platinum"],Altima:["S","SV","SR","SL"],Murano:["S","SV","SL"],Pathfinder:["S","SV","SL","Platinum"],Frontier:["S","SV","Pro-4X"]},
-  RAM:{"1500":["Tradesman","Big Horn","Laramie","Rebel","Limited","TRX"],"2500":["Tradesman","Big Horn","Laramie","Power Wagon","Limited"]},
-  Subaru:{Forester:["Base","Premium","Sport","Limited","Touring"],Outback:["Base","Premium","Limited","Touring","Wilderness"],Crosstrek:["Base","Premium","Sport","Limited"]},
+  Nissan:{Rogue:["S","SV","SL","Platinum"],Altima:["S","SV","SR","SL","Platinum"],Murano:["S","SV","SL","Platinum"],Pathfinder:["S","SV","SL","Platinum","Rock Creek"],Frontier:["S","SV","Pro-4X","SL"],Kicks:["S","SV","SR","SR Special Edition"],Sentra:["S","SV","SR","SR Limited"],Versa:["S","SV","SR"],Armada:["S","SV","SL","Platinum"],Titan:["S","SV","Pro-4X","SL","Platinum Reserve"]},
+  RAM:{"1500":["Tradesman","Big Horn","Warlock","Laramie","Rebel","Limited","Longhorn","TRX"],"2500":["Tradesman","Big Horn","Power Wagon","Laramie","Limited","Longhorn"],"3500":["Tradesman","Big Horn","Laramie","Limited","Longhorn"],ProMaster:["1500 Low Roof","2500 High Roof","3500 High Roof"],"ProMaster City":["ST","SLT","Tradesman"]},
+  Subaru:{Forester:["Base","Premium","Sport","Limited","Touring","Wilderness"],Outback:["Base","Premium","Onyx Edition","Limited","Touring","Wilderness"],Crosstrek:["Base","Premium","Sport","Limited","Wilderness"],Impreza:["Base","Premium","Sport","Limited"],Legacy:["Base","Premium","Sport","Limited","Touring XT"],WRX:["Base","Premium","GT","TR"],BRZ:["Base","Premium","Limited"]},
   Tesla:{"Model 3":["Standard Range","Long Range","Performance"],"Model Y":["Long Range","Performance"],"Model S":["Long Range","Plaid"]},
-  Toyota:{"RAV4":["LE","XLE","XLE Premium","TRD Off-Road","Adventure","Limited","Hybrid LE","Hybrid XSE","Hybrid Limited","Prime SE","Prime XSE"],Camry:["LE","SE","XSE","XLE","TRD","Hybrid LE","Hybrid XSE"],Corolla:["L","LE","SE","XSE","XLE"],Highlander:["L","LE","XLE","Limited","Platinum","Hybrid LE"],Tacoma:["SR","SR5","TRD Sport","TRD Off-Road","Limited","TRD Pro"],Tundra:["SR","SR5","TRD Sport","Limited","Platinum","TRD Pro"],Sienna:["LE","XLE","XSE","Limited","Platinum"],"4Runner":["SR5","TRD Sport","TRD Off-Road","Limited","TRD Pro"]},
+  Toyota:{"RAV4":["LE","XLE","XLE Premium","TRD Off-Road","Adventure","Limited","Hybrid LE","Hybrid XSE","Hybrid Limited","Prime SE","Prime XSE"],Camry:["LE","SE","XSE","XLE","TRD","Hybrid LE","Hybrid XSE","Hybrid XLE"],Corolla:["L","LE","SE","XSE","XLE","Hybrid LE","GR Corolla"],"Corolla Cross":["L","LE","XLE","Hybrid LE","Hybrid XLE"],Highlander:["L","LE","XLE","XSE","Limited","Platinum","Hybrid LE","Hybrid XLE","Hybrid Platinum"],Tacoma:["SR","SR5","TRD Sport","TRD Off-Road","Limited","TRD Pro","Trail"],Tundra:["SR","SR5","TRD Sport","TRD Off-Road","Limited","Platinum","TRD Pro","Capstone"],Sienna:["LE","XLE","XSE","Limited","Platinum"],"4Runner":["SR5","SR5 Premium","TRD Sport","TRD Off-Road","Limited","TRD Pro"],Prius:["L Eco","LE","XLE","Limited","Prime LE","Prime XSE","Prime SE"],Venza:["LE","XLE","Limited"],BZ4X:["XLE","Limited"]},
   Volkswagen:{Tiguan:["Trendline","Comfortline","Highline","R-Line"],Jetta:["Trendline","Comfortline","Highline","GLI"],Atlas:["Trendline","Comfortline","Highline"]},
   Volvo:{XC60:["Core","Plus","Ultimate"],XC90:["Core","Plus","Ultimate"],XC40:["Core","Plus","Recharge"]},
 };
@@ -1125,6 +1125,41 @@ function InspectionView({v,onSave,saving}){
   const[targetDate,setTargetDate]=useState("");
   const[notes,setNotes]=useState("");
   const[saved,setSaved]=useState(false);
+  const[loading,setLoading]=useState(true);
+
+  // Load saved inspection from Firestore on mount
+  useEffect(()=>{
+    async function load(){
+      try{
+        const snap=await getDoc(doc(db,"inspections",v.id));
+        if(snap.exists()){
+          const data=snap.data();
+          if(data.items)setState(data.items);
+          if(data.odo)setOdo(data.odo);
+          if(data.shop)setShop(data.shop);
+          if(data.targetDate)setTargetDate(data.targetDate);
+          if(data.notes)setNotes(data.notes);
+          // Rebuild custom items list from saved state keys
+          if(data.items){
+            const rebuilt={};
+            Object.keys(data.items).forEach(key=>{
+              if(key.includes("_c_")){
+                const secId=key.split("|")[0];
+                const name=key.split("|")[1]?.replace(/_c_[a-z0-9]+$/,"");
+                if(secId&&name){
+                  if(!rebuilt[secId])rebuilt[secId]=[];
+                  if(!rebuilt[secId].find(x=>x.key===key))rebuilt[secId].push({key,name});
+                }
+              }
+            });
+            if(Object.keys(rebuilt).length>0)setCustomItems(rebuilt);
+          }
+        }
+      }catch(e){console.error("Failed to load inspection:",e);}
+      finally{setLoading(false);}
+    }
+    load();
+  },[v.id]);
 
   function setSev(key,sev){setState(p=>({...p,[key]:sev}));}
   function getFlagged(id){return Object.entries(state).filter(([k,v])=>k.startsWith(id+"|")&&v&&v!=="none").length;}
@@ -1144,6 +1179,8 @@ function InspectionView({v,onSave,saving}){
   const SEV={ok:{bg:T.greenBg,c:T.green,l:"OK"},monitor:{bg:T.blueBg,c:T.blue,l:"Monitor"},repair:{bg:T.amberBg,c:T.amber,l:"Repair"},replace:{bg:T.redBg,c:T.red,l:"Replace"}};
 
   async function handleSave(){await onSave({items:state,odo,shop,targetDate,notes});setSaved(true);setTimeout(()=>setSaved(false),2500);}
+
+  if(loading)return(<div style={{minHeight:200,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><div style={{width:24,height:24,border:`3px solid ${T.border}`,borderTop:`3px solid ${T.amber}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><span style={{color:T.textSecondary,fontSize:13}}>Loading inspection…</span></div>);
 
   return(
     <div>
